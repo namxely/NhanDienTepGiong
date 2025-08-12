@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống nhận diện và đếm tôm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .detection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .shrimp-counter {
+            background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        
+        .confidence-bar {
+            height: 4px;
+            background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+        }
+        
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+        
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.35s;
+            stroke-linecap: round;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse-animation {
+            animation: pulse 1.5s infinite;
+        }
+
+        /* ADDED: Styles for the modal */
+        #image-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            /* MODIFIED: Tailwind handles alignment now via flex on the element itself */
+            /* justify-content: center; */
+            /* align-items: center; */
+            padding: 1rem; /* Keep padding for overall modal spacing from viewport edges */
+            z-index: 50;
+        }
+
+        /* MODIFIED: .bg-white is now part of the Tailwind classes directly on the modal content div */
+        /* #image-modal .bg-white { ... } */
+
+        /* MODIFIED: #modal-image-content styles are handled by Tailwind classes */
+        /* #image-modal img { ... } */
+
+        /* REMOVED: General #image-modal button style, specific buttons styled with Tailwind */
+        /*
+        #image-modal button {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: #e53e3e;
+            color: white;
+            border: none;
+            border-radius: 9999px;
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        */
+
+        #image-modal p { /* This was for the old filename display, now handled by Tailwind */
+            text-align: center;
+            margin-top: 0.5rem;
+            color: #4a5568;
+            font-size: 0.875rem;
+        }
+
+        /* REMOVED: Old prev/next button styles, now handled by Tailwind in the new header structure */
+        /*
+        #prev-modal-btn,
+        #next-modal-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 9999px;
+            width: 2.5rem;
+            height: 2.5rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        #prev-modal-btn {
+            left: 1rem;
+        }
+
+        #next-modal-btn {
+            right: 1rem;
+        }
+
+        #prev-modal-btn:disabled,
+        #next-modal-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        */
+    </style>
+    
+    <!-- Additional Mobile Styles -->
+    <style>
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .container {
+                padding: 0.5rem !important;
+            }
+            
+            .video-container {
+                height: 50vh !important;
+                min-height: 300px;
+            }
+            
+            #video {
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover;
+            }
+            
+            .shrimp-counter {
+                padding: 0.75rem !important;
+            }
+            
+            .flex-col {
+                gap: 1rem !important;
+            }
+            
+            /* Mobile camera controls */
+            .camera-controls {
+                flex-direction: column !important;
+                gap: 0.5rem !important;
+            }
+            
+            .camera-controls select,
+            .camera-controls button {
+                width: 100% !important;
+                padding: 0.75rem !important;
+                font-size: 1rem !important;
+            }
+            
+            /* Mobile instructions panel */
+            .instruction-panel {
+                position: fixed !important;
+                bottom: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                background: rgba(255, 255, 255, 0.95) !important;
+                backdrop-filter: blur(10px) !important;
+                border-radius: 1rem 1rem 0 0 !important;
+                max-height: 40vh !important;
+                overflow-y: auto !important;
+                z-index: 1000 !important;
+                transform: translateY(calc(100% - 3rem)) !important;
+                transition: transform 0.3s ease !important;
+            }
+            
+            .instruction-panel.expanded {
+                transform: translateY(0) !important;
+            }
+            
+            .instruction-panel .toggle-btn {
+                position: absolute !important;
+                top: 0.5rem !important;
+                right: 1rem !important;
+                background: #4f46e5 !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 50% !important;
+                width: 2rem !important;
+                height: 2rem !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                cursor: pointer !important;
+            }
+            
+            /* Mobile modal adjustments */
+            #image-modal {
+                padding: 0.5rem !important;
+            }
+            
+            #image-modal .bg-white {
+                border-radius: 0.5rem !important;
+                max-height: 90vh !important;
+                overflow-y: auto !important;
+            }
+            
+            /* Touch-friendly buttons */
+            button {
+                min-height: 44px !important;
+                touch-action: manipulation !important;
+            }
+            
+            /* Prevent zoom on input focus */
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+        
+        /* Tablet adjustments */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .video-container {
+                height: 60vh;
+            }
+            
+            .flex-col.lg\:flex-row {
+                flex-direction: column !important;
+            }
+        }
+        
+        /* Landscape mobile */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .video-container {
+                height: 70vh !important;
+            }
+            
+            .instruction-panel {
+                max-height: 30vh !important;
+            }
+        }
+
+        /* RESPONSIVE DESIGN IMPROVEMENTS */
+        @media (max-width: 640px) {
+            /* Mobile-first approach */
+            .container {
+                padding: 0.5rem !important;
+            }
+            
+            /* Full screen video on mobile */
+            .video-container {
+                height: 60vh !important;
+                min-height: 300px;
+                margin-bottom: 1rem;
+                border-radius: 0.75rem;
+            }
+            
+            /* Mobile-optimized controls */
+            .flex.flex-wrap.gap-4 {
+                gap: 0.5rem !important;
+                justify-content: center;
+            }
+            
+            .flex.flex-wrap.gap-4 > * {
+                min-width: calc(50% - 0.25rem);
+                font-size: 0.875rem;
+                padding: 0.5rem 1rem;
+            }
+            
+            /* Single column layout on mobile */
+            .lg\\:flex-row {
+                flex-direction: column !important;
+            }
+            
+            /* Mobile sidebar */
+            .w-80 {
+                width: 100% !important;
+                margin-top: 1rem;
+            }
+            
+            /* Mobile-friendly inputs */
+            input, select, button {
+                font-size: 16px !important; /* Prevent zoom on iOS */
+                min-height: 44px !important; /* Touch-friendly */
+            }
+            
+            /* Hide some details on mobile to save space */
+            .hidden-mobile {
+                display: none !important;
+            }
+        }
+        
+        /* Tablet adjustments */
+        @media (min-width: 641px) and (max-width: 1024px) {
+            .video-container {
+                height: 50vh;
+            }
+            
+            .lg\\:flex-row {
+                flex-direction: column !important;
+            }
+            
+            .w-80 {
+                width: 100% !important;
+                margin-top: 1rem;
+            }
+        }
+        
+        /* Improved mobile modal */
+        @media (max-width: 640px) {
+            #image-modal {
+                padding: 0.25rem !important;
+            }
+            
+            #image-modal .bg-white {
+                border-radius: 0.5rem !important;
+                max-height: 95vh !important;
+            }
+            
+            .modal-header {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+            
+            .modal-nav-buttons {
+                order: 3;
+                width: 100%;
+                justify-content: center;
+                margin-top: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Main content -->
+            <div class="flex-1">
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <!-- Header -->
+                    <div class="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4">
+                        <div class="flex items-center justify-between">
+                            <h1 class="text-xl font-bold text-white">
+                                <i class="fas fa-shrimp mr-2"></i> Hệ thống nhận diện tôm
+                            </h1>
+                            <div class="flex items-center space-x-2">
+                                <span id="status-indicator" class="inline-block w-3 h-3 rounded-full bg-red-400"></span>
+                                <span id="status-text" class="text-sm text-white">Chưa kết nối</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Video feed -->
+                    <div class="p-4">                        <div class="video-container aspect-video bg-black rounded-md"> <!-- MODIFIED: Added bg-black and rounded-md here for consistency -->
+                            <video id="video-feed" class="w-full h-full object-cover" autoplay muted playsinline></video>
+                            <canvas id="detection-canvas" class="detection-canvas"></canvas>
+                            <!-- ADDED: Gallery for uploaded images -->
+                            <div id="uploaded-images-gallery" class="w-full h-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1 overflow-y-auto p-1" style="display: none;">
+                                <!-- Images will be appended here by JavaScript -->
+                            </div>
+                        </div>                        <div class="mt-4 space-y-3">
+                            <!-- Camera Selection Row -->
+                            <div class="flex items-center justify-center gap-2 bg-gray-50 p-3 rounded-lg">
+                                <label for="camera-select" class="text-sm font-medium text-gray-700 flex items-center">
+                                    <i class="fas fa-video mr-2"></i> 
+                                    <span class="hidden sm:inline">Camera:</span>
+                                </label>
+                                <select id="camera-select" class="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1 max-w-xs">
+                                    <option value="">Đang tải...</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Control Buttons -->
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <button id="start-btn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg flex items-center justify-center text-sm">
+                                    <i class="fas fa-play mr-2"></i> 
+                                    <span class="hidden sm:inline">Bắt đầu</span>
+                                    <span class="sm:hidden">Start</span>
+                                </button>
+                                <button id="stop-btn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg flex items-center justify-center text-sm" disabled>
+                                    <i class="fas fa-stop mr-2"></i> 
+                                    <span class="hidden sm:inline">Dừng</span>
+                                    <span class="sm:hidden">Stop</span>
+                                </button>
+                                <button id="capture-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center text-sm" disabled>
+                                    <i class="fas fa-camera mr-2"></i> 
+                                    <span class="hidden sm:inline">Chụp ảnh</span>
+                                    <span class="sm:hidden">Chụp</span>
+                                </button>
+                                <button id="upload-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-lg flex items-center justify-center text-sm">
+                                    <i class="fas fa-upload mr-2"></i> 
+                                    <span class="hidden sm:inline">Tải ảnh</span>
+                                    <span class="sm:hidden">Upload</span>
+                                </button>
+                            </div>
+                            <input type="file" id="file-input" accept="image/*" multiple class="hidden">
+                        </div>
+                          <!-- THÔNG BÁO GIAO DIỆN THỐNG NHẤT -->
+                        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div class="flex items-start">
+                                <i class="fas fa-info-circle text-blue-500 text-sm mt-0.5 mr-2"></i>
+                                <div class="text-sm text-blue-700">
+                                    <strong>📱 Giao diện thống nhất:</strong> Trang này đã được tối ưu hóa cho cả máy tính và điện thoại. Không cần truy cập /mobile riêng biệt nữa.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- ADDED: Camera instruction tip -->
+                        <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <div class="flex items-start">
+                                <i class="fas fa-lightbulb text-green-500 text-sm mt-0.5 mr-2"></i>
+                                <div class="text-sm text-green-700">
+                                    <strong>Hướng dẫn sử dụng camera điện thoại:</strong>
+                                    <ul class="mt-1 list-disc list-inside">
+                                        <li>Cắm điện thoại vào máy tính bằng cáp USB</li>
+                                        <li>Mở ứng dụng camera điện thoại và bật chế độ "USB Webcam" (nếu có)</li>
+                                        <li>Chọn camera từ dropdown và nhấn "Bắt đầu"</li>
+                                        <li>Camera có biểu tượng 📱 là camera từ điện thoại/USB</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                  <!-- Detection results -->
+                <div class="bg-white rounded-xl shadow-lg mt-6 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h2 class="text-lg font-semibold text-gray-800">
+                            <i class="fas fa-chart-bar mr-2 text-blue-500"></i> Kết quả nhận diện
+                        </h2>
+                    </div>
+                    <div class="p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="detection-results">
+                            <div class="text-center py-8 text-gray-400 col-span-full">
+                                <i class="fas fa-shrimp text-4xl mb-2"></i>
+                                <p>Chưa có dữ liệu nhận diện</p>
+                                <p class="text-sm mt-2">Hãy chụp ảnh hoặc tải lên một hoặc nhiều ảnh để nhận diện</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sidebar -->
+            <div class="w-full lg:w-80 flex-shrink-0">
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h2 class="text-lg font-semibold text-gray-800">
+                            <i class="fas fa-tachometer-alt mr-2 text-purple-500"></i> Thống kê
+                        </h2>
+                    </div>
+                      <div class="p-4 space-y-6">
+                        <!-- Total shrimp counter -->
+                        <div class="shrimp-counter rounded-lg p-4 text-white text-center pulse-animation">
+                            <div class="text-sm mb-1">Tổng số tôm phát hiện</div>
+                            <div class="text-4xl font-bold" id="total-shrimp">0</div>
+                            <div class="mt-2 text-xs opacity-80">Cập nhật lúc: <span id="update-time">--:--:--</span></div>
+                        </div>
+
+                        <!-- Placeholder for future feature - THIS IS THE TARGET -->
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-500">Loài tôm phát hiện:</h3>
+                            <div class="mt-1 p-3 bg-gray-50 rounded-md text-center"> <!-- Styled container like the old one -->
+                                <i class="fas fa-tag text-3xl text-gray-300 mb-2"></i> <!-- Icon, similar to the old section -->
+                                <p id="detected-shrimp-type-details" class="text-sm text-gray-700 font-semibold">Chưa có phát hiện</p> <!-- Text content will be updated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADDED: Modal for displaying clicked image -->
+    <div id="image-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50" style="display: none;">
+        <!-- MODIFIED: Modal Content Structure -->
+        <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[95vh] flex flex-col overflow-hidden">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-3 border-b border-gray-200">
+                <div class="flex items-center">
+                    <button id="prev-modal-btn" title="Previous Image" class="bg-pink-600 hover:bg-pink-700 text-white rounded-full w-9 h-9 flex items-center justify-center text-2xl leading-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-opacity-50">
+                        &lsaquo;
+                    </button>
+                    <button id="next-modal-btn" title="Next Image" class="ml-2 bg-pink-600 hover:bg-pink-700 text-white rounded-full w-9 h-9 flex items-center justify-center text-2xl leading-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-opacity-50">
+                        &rsaquo;
+                    </button>
+                </div>
+                <p id="modal-image-filename" class="text-sm font-medium text-gray-700 truncate mx-3 flex-grow text-center"></p>
+                <button id="close-modal-btn" title="Close" class="bg-red-500 hover:bg-red-600 text-white rounded-full w-9 h-9 flex items-center justify-center text-2xl leading-none focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
+                    &times;
+                </button>
+            </div>
+
+            <!-- Modal Body (Image) -->
+            <div class="p-1 flex-grow flex items-center justify-center overflow-auto">
+                <img id="modal-image-content" src="#" alt="Kết quả chi tiết" class="max-w-full max-h-full object-contain">
+            </div>
+        </div>
+    </div>
+
+    <script>        const videoFeed = document.getElementById('video-feed');
+        const detectionCanvas = document.getElementById('detection-canvas');
+        const galleryContainer = document.getElementById('uploaded-images-gallery'); // ADDED
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const captureBtn = document.getElementById('capture-btn');
+        const uploadBtn = document.getElementById('upload-btn');
+        const fileInput = document.getElementById('file-input');
+        const cameraSelect = document.getElementById('camera-select'); // ADDED: Camera selection
+        
+        const totalShrimpDisplay = document.getElementById('total-shrimp');
+        const updateTimeDisplay = document.getElementById('update-time');
+        const detectionResultsContainer = document.getElementById('detection-results');
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const detectedShrimpTypeDetails = document.getElementById('detected-shrimp-type-details');
+
+        // ADDED: Modal elements
+        const imageModal = document.getElementById('image-modal');
+        const modalImageContent = document.getElementById('modal-image-content');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const modalImageFilename = document.getElementById('modal-image-filename');
+        const prevModalBtn = document.getElementById('prev-modal-btn'); // ADDED
+        const nextModalBtn = document.getElementById('next-modal-btn'); // ADDED        const canvasCtx = detectionCanvas.getContext('2d');
+        let stream = null;
+        let processingInterval = null;
+        let modelLoaded = false; 
+        let overallUniqueSpecies = new Set(); 
+        let perImageSpeciesDetails = []; 
+        let availableCameras = []; // ADDED: Store available camera devices
+        let selectedDeviceId = null; // ADDED: Currently selected camera device ID
+
+        let processedImagesData = []; // ADDED: To store data for modal navigation
+        let currentModalImageIndex = -1; // ADDED: To track current image in modal        // Check model status with backend (optional, or assume loaded)
+        // async function checkModelStatus() {
+        // try {
+        // const response = await fetch('/model_status'); // You'd need this endpoint
+        // const data = await response.json();
+        // if (data.loaded) {
+        // modelLoaded = true;
+        // console.log("Model loaded successfully.");
+        // } else {
+        // console.error("Model not loaded on backend.");
+        // alert("Lỗi: Mô hình chưa được tải ở backend.");
+        // }
+        // } catch (error) {
+        // console.error("Error checking model status:", error);
+        // alert("Không thể kiểm tra trạng thái mô hình.");
+        // }
+        // }
+        // checkModelStatus(); // Call on page load        // ADDED: Function to get available cameras
+        async function getAvailableCameras() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                availableCameras = devices.filter(device => device.kind === 'videoinput');
+                
+                // Clear existing options
+                cameraSelect.innerHTML = '';
+                
+                if (availableCameras.length === 0) {
+                    cameraSelect.innerHTML = '<option value="">Không tìm thấy camera</option>';
+                    cameraSelect.disabled = true;
+                    return;
+                }
+                
+                // Add default option
+                cameraSelect.innerHTML = '<option value="">Chọn camera</option>';
+                
+                // Sort cameras to prioritize phone cameras
+                const sortedCameras = [...availableCameras].sort((a, b) => {
+                    const aLabel = (a.label || '').toLowerCase();
+                    const bLabel = (b.label || '').toLowerCase();
+                    
+                    // Priority: USB/External > Back camera > Front camera > Others
+                    const getPriority = (label) => {
+                        if (label.includes('usb') || label.includes('external') || label.includes('webcam')) return 1;
+                        if (label.includes('back') || label.includes('rear')) return 2;
+                        if (label.includes('front')) return 3;
+                        return 4;
+                    };
+                    
+                    return getPriority(aLabel) - getPriority(bLabel);
+                });
+                
+                // Add camera options
+                sortedCameras.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    
+                    // Try to identify phone cameras and USB devices
+                    let label = device.label || `Camera ${index + 1}`;
+                    const lowerLabel = label.toLowerCase();
+                    
+                    if (lowerLabel.includes('usb') || lowerLabel.includes('external') || lowerLabel.includes('webcam')) {
+                        label += ' 📱 (Điện thoại/USB)';
+                    } else if (lowerLabel.includes('back') || lowerLabel.includes('rear')) {
+                        label += ' 📷 (Camera sau)';
+                    } else if (lowerLabel.includes('front')) {
+                        label += ' 🤳 (Camera trước)';
+                    } else if (lowerLabel.includes('integrated') || lowerLabel.includes('built-in')) {
+                        label += ' 💻 (Camera tích hợp)';
+                    }
+                    
+                    option.textContent = label;
+                    cameraSelect.appendChild(option);
+                });
+                
+                cameraSelect.disabled = false;
+                
+                // Auto-select the best camera if no selection exists
+                if (!selectedDeviceId && availableCameras.length > 0) {
+                    // Prefer USB/external camera (likely phone), then back camera
+                    const phoneCamera = sortedCameras.find(camera => {
+                        const label = (camera.label || '').toLowerCase();
+                        return label.includes('usb') || label.includes('external') || label.includes('webcam');
+                    });
+                    
+                    const backCamera = sortedCameras.find(camera => {
+                        const label = (camera.label || '').toLowerCase();
+                        return label.includes('back') || label.includes('rear');
+                    });
+                    
+                    selectedDeviceId = phoneCamera ? phoneCamera.deviceId : 
+                                     backCamera ? backCamera.deviceId : 
+                                     sortedCameras[0].deviceId;
+                    cameraSelect.value = selectedDeviceId;
+                }
+                
+            } catch (error) {
+                console.error("Lỗi khi lấy danh sách camera:", error);
+                cameraSelect.innerHTML = '<option value="">Lỗi truy cập camera</option>';
+                cameraSelect.disabled = true;
+            }
+        }        // ADDED: Event listener for camera selection
+        cameraSelect.addEventListener('change', (event) => {
+            selectedDeviceId = event.target.value;
+            console.log("Camera đã chọn:", selectedDeviceId);
+            
+            // Show additional info about selected camera
+            if (selectedDeviceId) {
+                const selectedCamera = availableCameras.find(camera => camera.deviceId === selectedDeviceId);
+                if (selectedCamera) {
+                    console.log("Chi tiết camera:", {
+                        label: selectedCamera.label,
+                        deviceId: selectedCamera.deviceId,
+                        kind: selectedCamera.kind
+                    });
+                }
+            }
+        });async function startCamera() {
+            if (!modelLoaded && false) { 
+                // alert("Mô hình chưa sẵn sàng. Vui lòng thử lại sau.");
+                // return;
+            }
+            try {
+                // ADDED: Hide gallery and clear its content when starting camera
+                if (galleryContainer) {
+                    galleryContainer.style.display = 'none';
+                    galleryContainer.innerHTML = '';
+                }
+
+                // MODIFIED: Use selected device ID for camera constraints
+                const videoConstraints = {
+                    audio: false,
+                    video: {
+                        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+                        facingMode: selectedDeviceId ? undefined : 'environment', // Use facingMode as fallback
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
+                stream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+                videoFeed.style.display = 'block'; 
+                detectionCanvas.style.display = 'block'; 
+                videoFeed.srcObject = stream;
+                videoFeed.onloadedmetadata = () => {
+                    detectionCanvas.width = videoFeed.videoWidth;
+                    detectionCanvas.height = videoFeed.videoHeight;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    captureBtn.disabled = false;
+                    statusIndicator.classList.remove('bg-red-400');
+                    statusIndicator.classList.add('bg-green-400');
+                    statusText.textContent = 'Đang hoạt động';
+                    if (detectedShrimpTypeDetails) { // Reset sidebar species info
+                        detectedShrimpTypeDetails.innerHTML = '<p>Chưa có phát hiện</p>';
+                        const iconElement = detectedShrimpTypeDetails.parentElement.querySelector('i.fa-tag');
+                        if (iconElement) iconElement.style.display = 'block';
+                    }
+                    startProcessing();
+                };
+            } catch (err) {
+                console.error("Lỗi khi truy cập camera:", err);
+                alert("Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập hoặc thử chọn camera khác.");
+                statusIndicator.classList.add('bg-red-400');
+                statusIndicator.classList.remove('bg-green-400');
+                statusText.textContent = 'Lỗi camera';
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            videoFeed.srcObject = null;
+            videoFeed.style.display = 'none'; // ADDED: Hide video element when stopped
+
+            // ADDED: Hide gallery and clear its content
+            if (galleryContainer) {
+                galleryContainer.style.display = 'none';
+                galleryContainer.innerHTML = '';
+            }
+            // Ensure detection canvas is also hidden if not actively used
+            detectionCanvas.style.display = 'none';
+
+
+            stopProcessing();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            captureBtn.disabled = true;
+            canvasCtx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height); // Explicitly clear canvas
+            detectionResultsContainer.innerHTML = 
+                '<div class="text-center py-8 text-gray-400 col-span-full">' +
+                    '<i class="fas fa-shrimp text-4xl mb-2"></i>' +
+                    '<p>Camera đã dừng. Nhấn "Bắt đầu" để tiếp tục.</p>' +
+                '</div>';
+            totalShrimpDisplay.textContent = '0';
+            statusIndicator.classList.add('bg-red-400');
+            statusIndicator.classList.remove('bg-green-400');
+            statusText.textContent = 'Đã dừng';
+            if (detectedShrimpTypeDetails) { 
+                detectedShrimpTypeDetails.innerHTML = '<p>Chưa có phát hiện</p>';
+                const iconElement = detectedShrimpTypeDetails.parentElement.querySelector('i.fa-tag');
+                if (iconElement) iconElement.style.display = 'block';
+            } 
+            // Make the video container black
+            const videoContainerElement = document.querySelector('.video-container');
+            if (videoContainerElement) {
+                 // Already has bg-black
+            }
+        }
+
+        function startProcessing() {
+            if (processingInterval) clearInterval(processingInterval);
+            processingInterval = setInterval(async () => {
+                if (videoFeed.readyState < videoFeed.HAVE_ENOUGH_DATA) {
+                    return; 
+                }
+                
+                // Tạo canvas tạm thời với chất lượng cao hơn
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = videoFeed.videoWidth;
+                tempCanvas.height = videoFeed.videoHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(videoFeed, 0, 0, tempCanvas.width, tempCanvas.height);
+                
+                // Sử dụng chất lượng cao hơn cho JPEG
+                const imageDataUrl = tempCanvas.toDataURL('image/jpeg', 0.95);
+
+                try {
+                    const response = await fetch('/detect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageDataUrl })
+                    });
+                    if (!response.ok) {
+                        throw new Error('HTTP error! status: ' + response.status);
+                    }
+                    const data = await response.json();
+                    console.log("Kết quả nhận diện:", data); // Debug log
+                    drawDetections(data.detections, data.count, data.species_detected);
+                    updateStats(data.count);
+                } catch (error) {
+                    console.error("Lỗi khi gửi frame hoặc nhận diện:", error);
+                    // Hiển thị lỗi trên giao diện
+                    if (detectedShrimpTypeDetails) {
+                        detectedShrimpTypeDetails.textContent = 'Lỗi kết nối: ' + error.message;
+                    }
+                }
+            }, 500); // Tăng thời gian giữa các frame để giảm tải
+        }
+
+        function stopProcessing() {
+            if (processingInterval) clearInterval(processingInterval);
+            processingInterval = null;
+        }
+
+        function drawDetections(detections, count, species_detected_for_frame) {
+            // Chỉ xóa canvas nếu đang stream video trực tiếp
+            if (stream && stream.active) {
+                canvasCtx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
+            }
+            
+            console.log("Vẽ detections:", {
+                detections: detections,
+                count: count,
+                species: species_detected_for_frame
+            });
+            
+            if (!detections || detections.length === 0) {
+                if (stream && stream.active) {
+                    detectionResultsContainer.innerHTML = 
+                        '<div class="text-center py-8 text-gray-400 col-span-full">' +
+                            '<i class="fas fa-search-minus text-4xl mb-2"></i>' +
+                            '<p>Không phát hiện thấy tôm trong khung hình hiện tại.</p>' +
+                            '<p class="text-sm mt-2">Thử điều chỉnh góc camera hoặc ánh sáng</p>' +
+                        '</div>';
+                }
+                if (detectedShrimpTypeDetails) { 
+                    detectedShrimpTypeDetails.textContent = 'Không phát hiện trong khung hình'; 
+                } 
+                return;
+            }
+
+            detectionResultsContainer.innerHTML = ''; 
+
+            // Vẽ bounding boxes và labels
+            detections.forEach((det, index) => {
+                const { box, confidence, name } = det;
+                
+                // Kiểm tra tính hợp lệ của bounding box
+                if (!box || box.length !== 4) {
+                    console.warn("Bounding box không hợp lệ:", box);
+                    return;
+                }
+                
+                const [x1, y1, x2, y2] = box.map(coord => Math.max(0, parseFloat(coord)));
+                
+                // Kiểm tra tọa độ hợp lệ
+                if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
+                    console.warn("Tọa độ không hợp lệ:", box);
+                    return;
+                }
+                
+                const width = x2 - x1;
+                const height = y2 - y1;
+                
+                if (width <= 0 || height <= 0) {
+                    console.warn("Kích thước box không hợp lệ:", { width, height });
+                    return;
+                }
+                
+                // Vẽ bounding box với màu nổi bật
+                canvasCtx.strokeStyle = 'rgba(255, 0, 100, 0.9)'; // Màu hồng đậm
+                canvasCtx.lineWidth = Math.max(2, Math.min(detectionCanvas.width, detectionCanvas.height) / 200);
+                canvasCtx.strokeRect(x1, y1, width, height);
+
+                // Vẽ label với background
+                const label = `${name} (${(confidence * 100).toFixed(1)}%)`;
+                const fontSize = Math.max(12, Math.min(detectionCanvas.width, detectionCanvas.height) / 30);
+                canvasCtx.font = `bold ${fontSize}px Arial`;
+                
+                const textMetrics = canvasCtx.measureText(label);
+                const textWidth = textMetrics.width;
+                const textHeight = fontSize;
+                const padding = 4;
+                
+                // Vị trí label (trên hoặc dưới box)
+                let labelY = y1 - textHeight - padding;
+                if (labelY < 0) {
+                    labelY = y2 + textHeight + padding;
+                }
+                
+                // Vẽ background cho label
+                canvasCtx.fillStyle = 'rgba(255, 0, 100, 0.9)';
+                canvasCtx.fillRect(x1, labelY - textHeight, textWidth + padding * 2, textHeight + padding);
+                
+                // Vẽ text
+                canvasCtx.fillStyle = 'white';
+                canvasCtx.textAlign = 'left';
+                canvasCtx.textBaseline = 'top';
+                canvasCtx.fillText(label, x1 + padding, labelY - textHeight + padding/2);
+                
+                console.log(`Đã vẽ detection ${index + 1}: ${name} tại (${x1}, ${y1}, ${x2}, ${y2})`);
+            });
+
+            // Cập nhật thông tin loài trong sidebar
+            if (detectedShrimpTypeDetails) {
+                const iconElement = detectedShrimpTypeDetails.parentElement.querySelector('i.fa-tag');
+                if (species_detected_for_frame && species_detected_for_frame.length > 0) {
+                    detectedShrimpTypeDetails.textContent = 'Loài phát hiện: ' + species_detected_for_frame.join(', ');
+                    if (iconElement) iconElement.style.display = 'none'; 
+                } else if (count > 0) {
+                    detectedShrimpTypeDetails.textContent = `Phát hiện ${count} tôm (chưa xác định loài)`;
+                    if (iconElement) iconElement.style.display = 'block';
+                } else {
+                    detectedShrimpTypeDetails.textContent = 'Không phát hiện trong khung hình';
+                    if (iconElement) iconElement.style.display = 'block';
+                }
+            }
+
+            // Hiển thị thông báo thành công trong results container
+            if (detections.length > 0 && detectionResultsContainer.innerHTML === '') {
+                detectionResultsContainer.innerHTML = 
+                    '<div class="text-center py-8 text-green-600 col-span-full">' +
+                        '<i class="fas fa-check-circle text-4xl mb-2 text-green-500"></i>' +
+                        '<p class="font-semibold">Đã phát hiện ' + count + ' tôm!</p>' +
+                        '<p class="text-sm mt-1">Chi tiết hiển thị trên video</p>' +
+                    '</div>';
+            }
+        }
+
+        function updateStats(count) {
+            totalShrimpDisplay.textContent = count;
+            const now = new Date();
+            updateTimeDisplay.textContent = now.toLocaleTimeString('vi-VN');
+        }
+
+        function captureImage() {
+            if (!stream || !videoFeed.srcObject) {
+                alert("Camera chưa được bật.");
+                return;
+            }
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = videoFeed.videoWidth;
+            tempCanvas.height = videoFeed.videoHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(videoFeed, 0, 0, tempCanvas.width, tempCanvas.height);
+            
+            tempCtx.drawImage(detectionCanvas, 0, 0);
+
+            const dataUrl = tempCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = 'tom_chup_' + new Date().toISOString().slice(0,19).replace('T','_').replace(/:/g,'-') + '.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }        uploadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', async (event) => {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            stopCamera(); 
+            overallUniqueSpecies.clear(); 
+            perImageSpeciesDetails = []; 
+            processedImagesData = []; // ADDED: Clear for new batch
+            currentModalImageIndex = -1; // ADDED: Reset index
+            
+            // ADDED: Reset sidebar species display at the start of new upload processing
+            if (detectedShrimpTypeDetails) {
+                detectedShrimpTypeDetails.innerHTML = '<p>Đang xử lý...</p>';
+                const iconElement = detectedShrimpTypeDetails.parentElement.querySelector('i.fa-tag');
+                if (iconElement) iconElement.style.display = 'block'; // Show icon during processing
+            }
+
+            // ADDED: Display uploaded images in the gallery view
+            videoFeed.style.display = 'none';
+            detectionCanvas.style.display = 'none';
+            galleryContainer.innerHTML = ''; // Clear previous gallery content
+            galleryContainer.style.display = 'grid'; // Show gallery
+
+            for (const file of files) {
+                if (file.type.startsWith('image/')) {
+                    const imgWrapper = document.createElement('div');
+                    imgWrapper.className = 'aspect-square overflow-hidden rounded-sm'; // Added aspect-square and rounded
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    img.className = 'w-full h-full object-cover'; // Use object-cover to fill wrapper
+                    img.onload = () => {
+                        URL.revokeObjectURL(img.src); // Free memory after image is loaded
+                    };
+                    imgWrapper.appendChild(img);
+                    galleryContainer.appendChild(imgWrapper);
+                }
+            }
+            // END ADDED section for gallery display
+
+            // Prepare the detection results area for multiple images
+            detectionResultsContainer.innerHTML = 
+                '<div class="text-center py-4 col-span-full">' +
+                    '<h3 class="font-semibold text-lg mb-2">Phân tích nhiều ảnh</h3>' +
+                    '<p class="text-gray-600 mb-4">Đang xử lý <span id="process-count">0</span>/<span id="total-count">' + files.length + '</span> ảnh</p>' +
+                    '<div class="w-full bg-gray-200 rounded-full h-2.5">' +
+                        '<div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>' +
+                    '</div>' +
+                '</div>' +
+                '<div id="images-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full"></div>';
+            
+            const processCountElement = document.getElementById('process-count');
+            const progressBar = document.getElementById('progress-bar');
+            const imagesResultsContainer = document.getElementById('images-results');
+            
+            statusText.textContent = 'Đang xử lý nhiều ảnh';
+            if (detectedShrimpTypeDetails) {
+                detectedShrimpTypeDetails.textContent = 'Đang xử lý...';
+            }
+
+            let totalShrimpCount = 0;
+            let processedCount = 0;
+
+            // Process each file one by one
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                
+                if (!file.type.startsWith('image/')) {
+                    console.warn(`File ${file.name} không phải là ảnh, bỏ qua.`);
+                    processedCount++;
+                    updateProgress();
+                    continue;
+                }
+                
+                try {
+                    // Create a placeholder for this image
+                    const imageContainerId = `image-container-${i}`;
+                    const imageResultElement = document.createElement('div');
+                    imageResultElement.id = imageContainerId;
+                    imageResultElement.className = 'bg-white p-2 rounded-lg shadow';
+                    imageResultElement.innerHTML = 
+                        '<div class="aspect-video bg-gray-100 flex items-center justify-center mb-2">' +
+                            '<i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>' +
+                        '</div>' +
+                        '<p class="text-sm font-semibold truncate">' + file.name + '</p>' +
+                        '<p class="text-xs text-gray-500">Đang xử lý...</p>';
+                    
+                    imagesResultsContainer.appendChild(imageResultElement);
+                    
+                    // Process the image
+                    const processResult = await processImage(file, imageContainerId, i); // MODIFIED: Pass index i
+                    totalShrimpCount += processResult.shrimpCount || 0;
+
+                    // ADDED: Store per-image species details
+                    if (processResult.shrimpCount > 0) {
+                        let speciesTextForFile = "Không rõ loài";
+                        if (processResult.speciesDetected && processResult.speciesDetected.length > 0) {
+                            speciesTextForFile = processResult.speciesDetected.join(', ');
+                            // Populate overallUniqueSpecies for other potential uses (though not primary for sidebar now)
+                            processResult.speciesDetected.forEach(s => overallUniqueSpecies.add(s));
+                        }
+                        perImageSpeciesDetails.push({ fileName: file.name, species: speciesTextForFile });
+                    }
+                    // END ADDED section
+                    
+                    processedCount++;
+                    updateProgress();
+                    updateStats(totalShrimpCount);
+                } catch (error) {
+                    console.error(`Lỗi khi xử lý ảnh ${file.name}:`, error);
+                    
+                    // Update the placeholder with error
+                    const errorElement = document.getElementById(`image-container-${i}`);
+                    if (errorElement) {
+                        errorElement.innerHTML = 
+                            '<div class="aspect-video bg-red-50 flex flex-col items-center justify-center mb-2">' +
+                                '<i class="fas fa-exclamation-circle text-red-500 text-2xl mb-2"></i>' +
+                                '<p class="text-xs text-red-500">Lỗi xử lý</p>' +
+                            '</div>' +
+                            '<p class="text-sm font-semibold truncate">' + file.name + '</p>' +
+                            '<p class="text-xs text-red-500">Không thể phân tích</p>';
+                    }
+                    
+                    processedCount++; // Ensure progress continues even on error for one image
+                    updateProgress();
+                }
+            }
+            
+            function updateProgress() {
+                const percent = Math.floor((processedCount / files.length) * 100);
+                processCountElement.textContent = processedCount;
+                progressBar.style.width = `${percent}%`;
+                
+                // When all images are processed
+                if (processedCount === files.length) {
+                    statusText.textContent = 'Đã xử lý tất cả ảnh';
+                    if (detectedShrimpTypeDetails) {
+                        const iconElement = detectedShrimpTypeDetails.parentElement.querySelector('i.fa-tag');
+                        if (perImageSpeciesDetails.length > 0) {
+                            detectedShrimpTypeDetails.innerHTML = perImageSpeciesDetails.map(info => {
+                                const truncatedFileName = info.fileName.length > 25 ? info.fileName.substring(0, 22) + '...' : info.fileName;
+                                // Using <b> for bold as it's simple for innerHTML
+                                return `<b>${truncatedFileName}:</b> ${info.species}`;
+                            }).join('<br>');
+                            if (iconElement) iconElement.style.display = 'none'; // Hide icon when detailed list is shown
+                        } else if (totalShrimpCount > 0) {
+                            detectedShrimpTypeDetails.textContent = `Đã phát hiện ${totalShrimpCount} tôm. Không có tên loài cụ thể.`;
+                            if (iconElement) iconElement.style.display = 'block';
+                        } else {
+                            detectedShrimpTypeDetails.textContent = 'Không phát hiện tôm nào trong các ảnh.';
+                            if (iconElement) iconElement.style.display = 'block';
+                        }
+                    }
+                }
+            }
+            
+        });
+
+        // MODIFIED: processImage to accept and use an index for processedImagesData
+        async function processImage(file, containerId, imageIndex) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = async (e) => {
+                    const imageDataUrl = e.target.result;
+                    try {
+                        const response = await fetch('/detect', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image: imageDataUrl })
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        
+                        const data = await response.json(); 
+                        const containerElement = document.getElementById(containerId);
+                        
+                        // ... existing code for overallUniqueSpecies ...
+                        
+                        if (containerElement) {
+                            const canvas = document.createElement('canvas');
+                            const img = new Image();
+                            
+                            img.onload = () => {
+                                // ... existing canvas setup and drawing detections ...
+                                canvas.width = img.naturalWidth;
+                                canvas.height = img.naturalHeight;
+                                canvas.style.display = 'block'; 
+                                canvas.style.width = '100%';    
+                                canvas.style.height = 'auto';  
+                                canvas.style.maxWidth = '100%'; 
+                                canvas.style.maxHeight = '300px'; 
+                                canvas.style.objectFit = 'contain';
+                                canvas.style.cursor = 'pointer'; 
+
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                
+                                // MODIFIED: Draw detections onto this specific canvas for the modal and grid display
+                                if (data.detections && data.detections.length > 0) {
+                                    data.detections.forEach(det => {
+                                        const { box, confidence, name } = det;
+                                        const [x1_orig, y1_orig, x2_orig, y2_orig] = box.map(coord => Number(coord));
+
+                                        if ([x1_orig, y1_orig, x2_orig, y2_orig].some(isNaN)) {
+                                            console.error("Invalid bounding box coordinate for drawing:", box);
+                                            return; 
+                                        }
+                                        
+                                        // Ensure coordinates are within canvas bounds (optional, but good practice)
+                                        const x1 = Math.max(0, x1_orig);
+                                        const y1 = Math.max(0, y1_orig);
+                                        const x2 = Math.min(canvas.width, x2_orig);
+                                        const y2 = Math.min(canvas.height, y2_orig);
+
+
+                                        // Style for bounding box
+                                        ctx.strokeStyle = 'rgba(236, 72, 153, 0.9)'; // Pinkish-red
+                                        ctx.lineWidth = Math.max(2, canvas.width / 300); // Dynamic line width
+                                        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+                                        // Style for label
+                                        const labelText = name + ' (' + (confidence * 100).toFixed(1) + '%)';
+                                        const fontSize = Math.max(10, canvas.width / 50); // Dynamic font size
+                                        ctx.font = `bold ${fontSize}px sans-serif`;
+                                        
+                                        const textMetrics = ctx.measureText(labelText);
+                                        const textWidth = textMetrics.width;
+                                        const textHeight = fontSize; 
+                                        const labelBgPadding = fontSize * 0.3; 
+                                        const labelYOffset = fontSize * 0.4;
+
+                                        let rectY, textBaselineY;
+
+                                        // Try to place label above the box
+                                        if (y1 > (textHeight + labelBgPadding * 2 + labelYOffset)) { 
+                                            rectY = y1 - textHeight - labelBgPadding * 2 - labelYOffset;
+                                            textBaselineY = y1 - labelBgPadding - labelYOffset;
+                                        } else { // Place label below the box
+                                            rectY = y2 + labelYOffset;
+                                            textBaselineY = y2 + labelYOffset + textHeight + labelBgPadding;
+                                        }
+                                        
+                                        // Adjust if label goes out of canvas
+                                        if (rectY < 0) {
+                                            rectY = y2 + labelYOffset;
+                                            textBaselineY = y2 + labelYOffset + textHeight + labelBgPadding;
+                                        }
+                                        if (rectY + textHeight + labelBgPadding*2 > canvas.height) {
+                                            rectY = y1 - textHeight - labelBgPadding*2 - labelYOffset;
+                                            textBaselineY = y1 - labelBgPadding - labelYOffset;
+                                        }
+
+
+                                        ctx.fillStyle = 'rgba(236, 72, 153, 0.9)'; 
+                                        ctx.fillRect(x1, rectY, textWidth + labelBgPadding * 2, textHeight + labelBgPadding * 2);
+
+                                        ctx.fillStyle = 'white';
+                                        ctx.textBaseline = 'bottom'; // Align text better within its background
+                                        ctx.fillText(labelText, x1 + labelBgPadding, textBaselineY);
+                                    });
+                                }
+                                // END MODIFIED detection drawing
+
+                                // ADDED: Store canvas data for modal
+                                const canvasDataUrlForModal = canvas.toDataURL('image/png');
+                                processedImagesData[imageIndex] = { // Use imageIndex to keep order
+                                    canvasDataUrl: canvasDataUrlForModal,
+                                    fileName: file.name
+                                };
+
+                                const imageDisplayContainer = containerElement.querySelector('.aspect-video');
+                                if (imageDisplayContainer) {
+                                    imageDisplayContainer.innerHTML = ''; 
+                                    imageDisplayContainer.appendChild(canvas);
+                                    // ... (rest of imageDisplayContainer setup) ...
+
+                                    canvas.addEventListener('click', () => {
+                                        openModalAtIndex(imageIndex); // MODIFIED: Use the correct index
+                                    });
+                                }
+                                resolve({ shrimpCount: data.count, speciesDetected: data.species_detected });
+                            };
+                            img.onerror = () => reject(new Error("Lỗi tải ảnh: " + file.name));
+                            img.src = imageDataUrl; 
+                        }
+                    } catch (error) { reject(error); }
+                };
+                reader.onerror = () => reject(new Error("Lỗi đọc file: " + file.name));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ADDED: Function to open modal at a specific index
+        function openModalAtIndex(index) {
+            if (index < 0 || index >= processedImagesData.length || !processedImagesData[index]) {
+                console.error("Invalid index or data for modal: ", index, processedImagesData[index]);
+                return;
+            }
+            currentModalImageIndex = index;
+            updateModalContent();
+            imageModal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        // ADDED: Function to update modal content and nav buttons
+        function updateModalContent() {
+            if (currentModalImageIndex < 0 || currentModalImageIndex >= processedImagesData.length || !processedImagesData[currentModalImageIndex]) {
+                // Close modal if data is invalid or index is out of bounds
+                imageModal.style.display = 'none';
+                document.body.style.overflow = 'auto';
+                return;
+            }
+            const imageData = processedImagesData[currentModalImageIndex];
+            modalImageContent.src = imageData.canvasDataUrl;
+            modalImageFilename.textContent = imageData.fileName;
+
+            prevModalBtn.disabled = currentModalImageIndex === 0;
+            nextModalBtn.disabled = currentModalImageIndex === processedImagesData.length - 1;
+        }
+
+        // ADDED: Event listeners for modal navigation
+        prevModalBtn.addEventListener('click', () => {
+            if (currentModalImageIndex > 0) {
+                currentModalImageIndex--;
+                updateModalContent();
+            }
+        });
+
+        nextModalBtn.addEventListener('click', () => {
+            if (currentModalImageIndex < processedImagesData.length - 1) {
+                currentModalImageIndex++;
+                updateModalContent();
+            }
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            imageModal.style.display = 'none';
+            modalImageContent.src = '#'; 
+            modalImageFilename.textContent = '';
+            document.body.style.overflow = 'auto'; 
+            currentModalImageIndex = -1; // Reset index
+        });
+
+        imageModal.addEventListener('click', (event) => {
+            if (event.target === imageModal) {
+                imageModal.style.display = 'none';
+                modalImageContent.src = '#'; 
+                modalImageFilename.textContent = '';
+                document.body.style.overflow = 'auto'; 
+                currentModalImageIndex = -1; // Reset index
+            }
+        });
+
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+        captureBtn.addEventListener('click', captureImage);
+          // Initial state
+        statusText.textContent = 'Sẵn sàng (Mô hình đã tải)'; // Assume model loaded
+        modelLoaded = true; // For frontend dev, assume true initially. Backend handles actual loading.        // ADDED: Initialize camera list on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            // Update WiFi IP display
+            updateWiFiIP();
+            
+            // Request camera permission to get device labels
+            try {
+                // Request permission first to get device labels
+                const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                tempStream.getTracks().forEach(track => track.stop()); // Stop immediately
+                await getAvailableCameras();
+            } catch (error) {
+                console.warn("Could not get camera permission:", error);
+                cameraSelect.innerHTML = '<option value="">Cần cấp quyền camera</option>';
+                cameraSelect.disabled = true;
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            stopCamera(); // Ensure camera is off if user closes tab/window
+        });
+
+        // Function to toggle instruction panel
+        function toggleInstructionPanel() {
+            const content = document.getElementById('instruction-content');
+            const icon = document.getElementById('instruction-toggle-icon');
+            
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.classList.remove('fa-chevron-down');
+                icon.classList.add('fa-chevron-up');
+            } else {
+                content.classList.add('hidden');
+                icon.classList.remove('fa-chevron-up');
+                icon.classList.add('fa-chevron-down');
+            }
+        }
+        
+        // Function to get and display WiFi IP
+        async function updateWiFiIP() {
+            try {
+                const response = await fetch('/get_ip');
+                const data = await response.json();
+                const wifiIpElement = document.getElementById('wifi-ip');
+                if (wifiIpElement && data.ip) {
+                    wifiIpElement.textContent = `http://${data.ip}:5000`;
+                }
+            } catch (error) {
+                console.log('Could not get WiFi IP:', error);
+                // Fallback to showing current host
+                const wifiIpElement = document.getElementById('wifi-ip');
+                if (wifiIpElement) {
+                    wifiIpElement.textContent = `http://${window.location.hostname}:5000`;
+                }
+            }
+        }
+
+    </script>
+</body>
+</html>

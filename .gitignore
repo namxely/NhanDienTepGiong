@@ -1,0 +1,31 @@
+# Loại trừ các thư mục dữ liệu training và validation
+train/
+valid/
+
+# Loại trừ các file tạm thời của Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Loại trừ file môi trường ảo
+venv/
+env/
+ENV/
+
+# Loại trừ file IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Loại trừ file hệ thống
+.DS_Store
+Thumbs.db
+
+# Loại trừ file log
+*.log
+
+# Loại trừ file backup
+*.bak
+*~

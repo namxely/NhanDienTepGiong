@@ -1,0 +1,19 @@
+path: /kaggle/input/datatom
+train: train/images
+val: valid/images
+test: test/images
+
+names: 
+  0: Tôm đốm đen
+  1: Tôm sét xanh
+  2: Tôm pha lê đỏ đen
+  3: Tôm hổ họa tiết đen
+  4: Tôm vua khổng lồ đen
+  5: Tôm đồng cổ truyền
+  6: Tôm hổ mắt cam
+  7: Tôm gấu trúc đen
+  8: Tôm đốm đỏ
+  9: Tôm hổ gấu mèo
+  10: Tôm bóng mờ Mosura
+  11: Tôm hổ cam
+  12: Tôm vàng trắng
