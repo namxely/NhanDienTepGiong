@@ -179,11 +179,6 @@ pip install --upgrade -r requirements.txt
 - **Điện thoại:** 0395212680
 - **Vấn đề:** Vui lòng kiểm tra phần khắc phục sự cố trước
 
-## Giấy Phép
-
-Dự án này dành cho mục đích giáo dục và nghiên cứu.
-
----
 
 **Cập nhật lần cuối:** Tháng 6 năm 2025  
-**Phiên bản:** Bản Phát Hành Sản Xuất Sạch
+
