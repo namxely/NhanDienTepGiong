@@ -1,4 +1,4 @@
-# Ứng Dụng Nhận Diện Tôm YOLOv8
+# Ứng Dụng Nhận Diện Tép YOLOv8
 
 **Nhà phát triển:** Nguyễn Thành Nam  
 **Điện thoại:** 0395212680  
